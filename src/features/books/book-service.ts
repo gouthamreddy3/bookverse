@@ -59,6 +59,8 @@ function toBookDetail(book: {
   publishedAt: Date | null;
   isbn10: string | null;
   isbn13: string | null;
+  averageRating: unknown;
+  ratingsCount: number;
   authors: { author: { id: string; name: string; photoUrl: string | null } }[];
   genres: { genre: { name: string } }[];
 }): BookDetail {
@@ -72,6 +74,8 @@ function toBookDetail(book: {
     publishedAt: book.publishedAt,
     isbn10: book.isbn10,
     isbn13: book.isbn13,
+    averageRating: Number(book.averageRating),
+    ratingsCount: book.ratingsCount,
     authors: book.authors.map(({ author }) => ({
       id: author.id,
       name: author.name,

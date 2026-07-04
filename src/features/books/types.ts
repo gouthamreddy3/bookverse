@@ -78,4 +78,6 @@ export interface BookDetail {
   isbn13: string | null;
   authors: AuthorSummary[];
   genres: string[];
+  averageRating: number;
+  ratingsCount: number;
 }
