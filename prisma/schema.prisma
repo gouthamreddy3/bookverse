@@ -1,0 +1,534 @@
+// BookVerse database schema.
+// No database connection or migrations are run from this file yet —
+// schema design only, validated with `npx prisma validate` / `npx prisma format`.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum Role {
+  USER
+  MODERATOR
+  ADMIN
+}
+
+enum AccountStatus {
+  ACTIVE
+  SUSPENDED
+  DEACTIVATED
+}
+
+enum FollowStatus {
+  PENDING
+  ACCEPTED
+}
+
+enum ReadingStatusType {
+  WANT_TO_READ
+  READING
+  READ
+  DID_NOT_FINISH
+  ON_HOLD
+}
+
+enum ReviewVisibility {
+  PUBLIC
+  FOLLOWERS_ONLY
+  PRIVATE
+}
+
+enum AuthorRole {
+  AUTHOR
+  CO_AUTHOR
+  EDITOR
+  TRANSLATOR
+  ILLUSTRATOR
+  NARRATOR
+}
+
+enum LikeableType {
+  REVIEW
+  COMMENT
+  QUOTE
+}
+
+enum ActivityType {
+  FOLLOWED_USER
+  RATED_BOOK
+  REVIEWED_BOOK
+  ADDED_TO_READING_LIST
+  UPDATED_READING_STATUS
+  LIKED_REVIEW
+  COMMENTED_ON_REVIEW
+  UNLOCKED_ACHIEVEMENT
+}
+
+enum NotificationType {
+  NEW_FOLLOWER
+  FOLLOW_REQUEST
+  REVIEW_LIKED
+  REVIEW_COMMENTED
+  COMMENT_REPLIED
+  MENTIONED_IN_COMMENT
+  ACHIEVEMENT_UNLOCKED
+}
+
+// ---------------------------------------------------------------------------
+// Identity & social graph
+// ---------------------------------------------------------------------------
+
+/// Auth identity only. Field shape is kept compatible with Auth.js's Prisma
+/// adapter (email, emailVerified, name, image) so integrating it later is
+/// additive. Public-facing data lives on Profile, not here.
+model User {
+  id             String        @id @default(uuid()) @db.Uuid
+  email          String        @unique
+  emailVerified  DateTime?     @map("email_verified")
+  hashedPassword String?       @map("hashed_password")
+  name           String?
+  image          String?
+  role           Role          @default(USER)
+  status         AccountStatus @default(ACTIVE)
+  lastLoginAt    DateTime?     @map("last_login_at")
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+
+  profile                Profile?
+  following              Follow[]          @relation("Follower")
+  followers              Follow[]          @relation("Following")
+  reviews                Review[]
+  ratings                Rating[]
+  readingLists           ReadingList[]
+  readingStatuses        ReadingStatus[]
+  comments               Comment[]
+  likes                  Like[]
+  quotes                 Quote[]
+  achievements           UserAchievement[]
+  activities             Activity[]        @relation("ActivityActor")
+  targetedActivities     Activity[]        @relation("ActivityTarget")
+  notifications          Notification[]    @relation("NotificationRecipient")
+  triggeredNotifications Notification[]    @relation("NotificationActor")
+
+  @@map("users")
+}
+
+/// Public presentation layer, separated from User so auth stays untouched by
+/// profile/display feature work. Counters are denormalized caches maintained
+/// by application logic — see schema-level reasoning for why.
+model Profile {
+  id             String   @id @default(uuid()) @db.Uuid
+  userId         String   @unique @map("user_id") @db.Uuid
+  username       String   @unique
+  displayName    String?  @map("display_name")
+  bio            String?
+  avatarUrl      String?  @map("avatar_url")
+  bannerUrl      String?  @map("banner_url")
+  location       String?
+  websiteUrl     String?  @map("website_url")
+  pronouns       String?
+  isPrivate      Boolean  @default(false) @map("is_private")
+  followersCount Int      @default(0) @map("followers_count")
+  followingCount Int      @default(0) @map("following_count")
+  reviewsCount   Int      @default(0) @map("reviews_count")
+  booksReadCount Int      @default(0) @map("books_read_count")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([username])
+  @@map("profiles")
+}
+
+/// Self-relation on User. `status` supports private-account follow requests
+/// without a future migration, even though MVP only uses ACCEPTED.
+model Follow {
+  id          String       @id @default(uuid()) @db.Uuid
+  followerId  String       @map("follower_id") @db.Uuid
+  followingId String       @map("following_id") @db.Uuid
+  status      FollowStatus @default(ACCEPTED)
+  createdAt   DateTime     @default(now()) @map("created_at")
+
+  follower  User @relation("Follower", fields: [followerId], references: [id], onDelete: Cascade)
+  following User @relation("Following", fields: [followingId], references: [id], onDelete: Cascade)
+
+  @@unique([followerId, followingId])
+  @@index([followerId])
+  @@index([followingId])
+  @@map("follows")
+}
+
+// ---------------------------------------------------------------------------
+// Book catalog
+// ---------------------------------------------------------------------------
+
+model Book {
+  id            String    @id @default(uuid()) @db.Uuid
+  title         String
+  subtitle      String?
+  slug          String    @unique
+  description   String?
+  isbn10        String?   @unique @map("isbn_10")
+  isbn13        String?   @unique @map("isbn_13")
+  openLibraryId String?   @unique @map("open_library_id")
+  googleBooksId String?   @unique @map("google_books_id")
+  coverImageUrl String?   @map("cover_image_url")
+  publishedAt   DateTime? @map("published_at")
+  publisher     String?
+  language      String?   @default("en")
+  pageCount     Int?      @map("page_count")
+  averageRating Decimal   @default(0) @map("average_rating") @db.Decimal(3, 2)
+  ratingsCount  Int       @default(0) @map("ratings_count")
+  reviewsCount  Int       @default(0) @map("reviews_count")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  authors          BookAuthor[]
+  genres           BookGenre[]
+  reviews          Review[]
+  ratings          Rating[]
+  readingListItems ReadingListItem[]
+  readingStatuses  ReadingStatus[]
+  quotes           Quote[]
+  activities       Activity[]
+
+  @@index([title])
+  @@map("books")
+}
+
+model Author {
+  id            String    @id @default(uuid()) @db.Uuid
+  name          String
+  slug          String    @unique
+  bio           String?
+  photoUrl      String?   @map("photo_url")
+  birthDate     DateTime? @map("birth_date")
+  deathDate     DateTime? @map("death_date")
+  openLibraryId String?   @unique @map("open_library_id")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  books BookAuthor[]
+
+  @@index([name])
+  @@map("authors")
+}
+
+/// Explicit join table (not in the original model list) — required to
+/// normalize the book/author many-to-many the same way BookGenre normalizes
+/// book/genre, and to carry role + display order.
+model BookAuthor {
+  id       String     @id @default(uuid()) @db.Uuid
+  bookId   String     @map("book_id") @db.Uuid
+  authorId String     @map("author_id") @db.Uuid
+  role     AuthorRole @default(AUTHOR)
+  position Int        @default(0)
+
+  book   Book   @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  author Author @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@unique([bookId, authorId])
+  @@index([authorId])
+  @@map("book_authors")
+}
+
+model Genre {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String   @unique
+  slug        String   @unique
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  books BookGenre[]
+
+  @@map("genres")
+}
+
+model BookGenre {
+  id        String  @id @default(uuid()) @db.Uuid
+  bookId    String  @map("book_id") @db.Uuid
+  genreId   String  @map("genre_id") @db.Uuid
+  isPrimary Boolean @default(false) @map("is_primary")
+
+  book  Book  @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  genre Genre @relation(fields: [genreId], references: [id], onDelete: Cascade)
+
+  @@unique([bookId, genreId])
+  @@index([genreId])
+  @@map("book_genres")
+}
+
+// ---------------------------------------------------------------------------
+// Engagement: ratings, reviews, reading lists, reading status, quotes
+// ---------------------------------------------------------------------------
+
+/// One current rating per user/book. Kept separate from Review so rating
+/// (frequent, low-friction) doesn't require writing a review.
+model Rating {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  bookId    String   @map("book_id") @db.Uuid
+  value     Decimal  @db.Decimal(2, 1)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  book   Book    @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  review Review?
+
+  @@unique([userId, bookId])
+  @@index([bookId])
+  @@map("ratings")
+}
+
+model Review {
+  id               String           @id @default(uuid()) @db.Uuid
+  userId           String           @map("user_id") @db.Uuid
+  bookId           String           @map("book_id") @db.Uuid
+  ratingId         String?          @unique @map("rating_id") @db.Uuid
+  content          String
+  containsSpoilers Boolean          @default(false) @map("contains_spoilers")
+  visibility       ReviewVisibility @default(PUBLIC)
+  likesCount       Int              @default(0) @map("likes_count")
+  commentsCount    Int              @default(0) @map("comments_count")
+  deletedAt        DateTime?        @map("deleted_at")
+  createdAt        DateTime         @default(now()) @map("created_at")
+  updatedAt        DateTime         @updatedAt @map("updated_at")
+
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  book          Book           @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  rating        Rating?        @relation(fields: [ratingId], references: [id], onDelete: SetNull)
+  comments      Comment[]
+  activities    Activity[]
+  notifications Notification[]
+
+  @@index([bookId, createdAt])
+  @@index([userId, createdAt])
+  @@map("reviews")
+}
+
+model ReadingList {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @map("user_id") @db.Uuid
+  name        String
+  description String?
+  isPublic    Boolean  @default(true) @map("is_public")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  user       User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items      ReadingListItem[]
+  activities Activity[]
+
+  @@index([userId])
+  @@map("reading_lists")
+}
+
+model ReadingListItem {
+  id            String   @id @default(uuid()) @db.Uuid
+  readingListId String   @map("reading_list_id") @db.Uuid
+  bookId        String   @map("book_id") @db.Uuid
+  note          String?
+  position      Int      @default(0)
+  addedAt       DateTime @default(now()) @map("added_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  readingList ReadingList @relation(fields: [readingListId], references: [id], onDelete: Cascade)
+  book        Book        @relation(fields: [bookId], references: [id], onDelete: Cascade)
+
+  @@unique([readingListId, bookId])
+  @@index([readingListId, position])
+  @@index([bookId])
+  @@map("reading_list_items")
+}
+
+/// Current per-user status for a book (want to read / reading / read / ...).
+/// Distinct from ReadingList, which is user-curated shelves; this is the
+/// single source of truth reading analytics (Phase 2) will aggregate over.
+model ReadingStatus {
+  id          String            @id @default(uuid()) @db.Uuid
+  userId      String            @map("user_id") @db.Uuid
+  bookId      String            @map("book_id") @db.Uuid
+  status      ReadingStatusType @default(WANT_TO_READ)
+  startedAt   DateTime?         @map("started_at")
+  finishedAt  DateTime?         @map("finished_at")
+  currentPage Int?              @map("current_page")
+  rereadCount Int               @default(0) @map("reread_count")
+  createdAt   DateTime          @default(now()) @map("created_at")
+  updatedAt   DateTime          @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  book Book @relation(fields: [bookId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, bookId])
+  @@index([userId, status])
+  @@index([bookId])
+  @@map("reading_statuses")
+}
+
+/// Future-ready: saved quotes/passages from a book.
+model Quote {
+  id         String   @id @default(uuid()) @db.Uuid
+  bookId     String   @map("book_id") @db.Uuid
+  userId     String   @map("user_id") @db.Uuid
+  content    String
+  pageNumber Int?     @map("page_number")
+  chapter    String?
+  isSpoiler  Boolean  @default(false) @map("is_spoiler")
+  likesCount Int      @default(0) @map("likes_count")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  book Book @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([bookId])
+  @@index([userId])
+  @@map("quotes")
+}
+
+// ---------------------------------------------------------------------------
+// Discussion & reactions
+// ---------------------------------------------------------------------------
+
+/// Scoped to Review for MVP (Phase 1's discussion surface). Threaded via
+/// self-relation. Soft-deleted (deletedAt) rather than hard-deleted so
+/// replies in a thread don't orphan.
+model Comment {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  reviewId   String    @map("review_id") @db.Uuid
+  parentId   String?   @map("parent_id") @db.Uuid
+  content    String
+  likesCount Int       @default(0) @map("likes_count")
+  deletedAt  DateTime? @map("deleted_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  review        Review         @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  parent        Comment?       @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies       Comment[]      @relation("CommentReplies")
+  notifications Notification[]
+
+  @@index([reviewId, createdAt])
+  @@index([parentId])
+  @@index([userId])
+  @@map("comments")
+}
+
+/// Polymorphic-by-discriminator: likeableId is not a DB-enforced foreign key
+/// (Prisma/Postgres have no native polymorphic FK). Cleanup on delete of the
+/// liked entity is handled in application code. See schema-level reasoning.
+model Like {
+  id           String       @id @default(uuid()) @db.Uuid
+  userId       String       @map("user_id") @db.Uuid
+  likeableType LikeableType @map("likeable_type")
+  likeableId   String       @map("likeable_id") @db.Uuid
+  createdAt    DateTime     @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, likeableType, likeableId])
+  @@index([likeableType, likeableId])
+  @@map("likes")
+}
+
+// ---------------------------------------------------------------------------
+// Feed & notifications
+// ---------------------------------------------------------------------------
+
+/// Aggregated event log powering the activity feed. Direct FKs to
+/// high-value related entities (SetNull on delete, so removing e.g. a
+/// reading list doesn't wipe the actor's whole history); `metadata` covers
+/// anything long-tail without needing a schema change per new event type.
+model Activity {
+  id            String       @id @default(uuid()) @db.Uuid
+  actorId       String       @map("actor_id") @db.Uuid
+  type          ActivityType
+  bookId        String?      @map("book_id") @db.Uuid
+  reviewId      String?      @map("review_id") @db.Uuid
+  readingListId String?      @map("reading_list_id") @db.Uuid
+  targetUserId  String?      @map("target_user_id") @db.Uuid
+  metadata      Json?
+  createdAt     DateTime     @default(now()) @map("created_at")
+
+  actor       User         @relation("ActivityActor", fields: [actorId], references: [id], onDelete: Cascade)
+  targetUser  User?        @relation("ActivityTarget", fields: [targetUserId], references: [id], onDelete: SetNull)
+  book        Book?        @relation(fields: [bookId], references: [id], onDelete: SetNull)
+  review      Review?      @relation(fields: [reviewId], references: [id], onDelete: SetNull)
+  readingList ReadingList? @relation(fields: [readingListId], references: [id], onDelete: SetNull)
+
+  @@index([actorId, createdAt])
+  @@index([createdAt])
+  @@index([bookId])
+  @@index([targetUserId])
+  @@map("activities")
+}
+
+model Notification {
+  id        String           @id @default(uuid()) @db.Uuid
+  userId    String           @map("user_id") @db.Uuid
+  actorId   String?          @map("actor_id") @db.Uuid
+  type      NotificationType
+  reviewId  String?          @map("review_id") @db.Uuid
+  commentId String?          @map("comment_id") @db.Uuid
+  isRead    Boolean          @default(false) @map("is_read")
+  readAt    DateTime?        @map("read_at")
+  metadata  Json?
+  createdAt DateTime         @default(now()) @map("created_at")
+  updatedAt DateTime         @updatedAt @map("updated_at")
+
+  user    User     @relation("NotificationRecipient", fields: [userId], references: [id], onDelete: Cascade)
+  actor   User?    @relation("NotificationActor", fields: [actorId], references: [id], onDelete: SetNull)
+  review  Review?  @relation(fields: [reviewId], references: [id], onDelete: SetNull)
+  comment Comment? @relation(fields: [commentId], references: [id], onDelete: SetNull)
+
+  @@index([userId, isRead, createdAt])
+  @@index([actorId])
+  @@map("notifications")
+}
+
+// ---------------------------------------------------------------------------
+// Gamification (future-ready)
+// ---------------------------------------------------------------------------
+
+model Achievement {
+  id          String   @id @default(uuid()) @db.Uuid
+  key         String   @unique
+  name        String
+  description String?
+  iconUrl     String?  @map("icon_url")
+  criteria    Json
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  users UserAchievement[]
+
+  @@map("achievements")
+}
+
+model UserAchievement {
+  id            String    @id @default(uuid()) @db.Uuid
+  userId        String    @map("user_id") @db.Uuid
+  achievementId String    @map("achievement_id") @db.Uuid
+  progress      Int       @default(0)
+  unlockedAt    DateTime? @map("unlocked_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  achievement Achievement @relation(fields: [achievementId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, achievementId])
+  @@index([userId])
+  @@map("user_achievements")
+}

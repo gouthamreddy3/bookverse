@@ -1,36 +1,83 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# BookVerse
+
+A modern social platform for readers — track what you read, rate and review
+books, build reading lists, and follow other readers. Inspired by the social
+experience of Letterboxd, reimagined for books.
+
+> **Status:** early development (foundation milestone). Not yet deployed.
+
+## Tech Stack
+
+| Layer      | Choice                                       |
+| ---------- | --------------------------------------------- |
+| Framework  | Next.js 16 (App Router)                       |
+| Language   | TypeScript (strict)                           |
+| UI         | React, Tailwind CSS, shadcn/ui                |
+| Backend    | Next.js Route Handlers, Server Actions        |
+| Database   | PostgreSQL                                    |
+| ORM        | Prisma 6 (pinned — see note below)            |
+| Auth       | Auth.js                                       |
+| Validation | Zod                                           |
+| Forms      | React Hook Form                               |
+| Deployment | Vercel                                        |
+| Book data  | Open Library API (Google Books as fallback)   |
+
+## Project Structure
+
+```
+src/
+├── app/                 # Routes only (App Router)
+│   ├── (marketing)/     # Public/landing routes
+│   └── (app)/           # Authenticated app routes
+├── components/
+│   ├── ui/               # shadcn/ui primitives
+│   └── shared/            # Cross-feature reusable components
+├── features/              # Feature modules (books, reviews, profiles, ...)
+├── lib/                   # Utilities and helpers
+├── config/                # Site config, constants
+└── types/                 # Shared TypeScript types
+prisma/                    # Prisma schema (schema.prisma) — no migrations yet
+```
+
+## Database Schema
+
+The Prisma schema (`prisma/schema.prisma`) is fully designed but not yet
+connected to a database — no migrations have been run. It models the full
+Phase 1 domain (users, profiles, follows, books/authors/genres, ratings,
+reviews, reading lists, reading status, comments, likes, activity feed,
+notifications) plus Phase 2-ready models (quotes, achievements).
+
+**Pinned to Prisma 6** (not 7): Prisma 7 requires a `prisma.config.ts` +
+mandatory driver adapters and removes `datasource { url }` from the schema
+file. `@auth/prisma-adapter`, which the upcoming Auth.js integration depends
+on, only declares peer support up to Prisma 6. Revisit this pin once the
+adapter ecosystem catches up.
 
 ## Getting Started
 
-First, run the development server:
-
 ```bash
+npm install
+cp .env.example .env.local   # fill in values as features come online
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Environment Variables
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+See [`.env.example`](./.env.example). Nothing is required yet for the current
+milestone — variables are documented ahead of the Prisma and Auth.js
+integration milestones.
 
-## Learn More
+## Scripts
 
-To learn more about Next.js, take a look at the following resources:
+| Command          | Description               |
+| ---------------- | -------------------------- |
+| `npm run dev`     | Start the dev server       |
+| `npm run build`   | Production build           |
+| `npm run start`   | Run the production build   |
+| `npm run lint`    | Lint the codebase          |
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## License
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+MIT — see [LICENSE](./LICENSE).
