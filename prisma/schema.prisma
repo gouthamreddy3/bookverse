@@ -105,6 +105,8 @@ model User {
   updatedAt      DateTime      @updatedAt @map("updated_at")
 
   profile                Profile?
+  accounts               Account[]
+  sessions               Session[]
   following              Follow[]          @relation("Follower")
   followers              Follow[]          @relation("Following")
   reviews                Review[]
@@ -121,6 +123,57 @@ model User {
   triggeredNotifications Notification[]    @relation("NotificationActor")
 
   @@map("users")
+}
+
+/// Required by @auth/prisma-adapter to link OAuth provider identities
+/// (Google) to a User. Not used for credentials login — that path bypasses
+/// the adapter and checks User.hashedPassword directly.
+model Account {
+  id                String  @id @default(uuid()) @db.Uuid
+  userId            String  @map("user_id") @db.Uuid
+  type              String
+  provider          String
+  providerAccountId String  @map("provider_account_id")
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+  @@map("accounts")
+}
+
+/// Required by the adapter's types, but effectively unused: Credentials
+/// login forces the `jwt` session strategy, so sessions live in a signed
+/// cookie, not this table. Kept for adapter compatibility and in case a
+/// database-session-only flow is added later.
+model Session {
+  id           String   @id @default(uuid()) @db.Uuid
+  sessionToken String   @unique @map("session_token")
+  userId       String   @map("user_id") @db.Uuid
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+/// Required by the adapter; also the foundation for future email
+/// verification / passwordless sign-in tokens.
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
 }
 
 /// Public presentation layer, separated from User so auth stays untouched by
