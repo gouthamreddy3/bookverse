@@ -1,14 +1,16 @@
 // BookVerse database schema.
-// No database connection or migrations are run from this file yet —
-// schema design only, validated with `npx prisma validate` / `npx prisma format`.
+// Connected to Neon Postgres. `url` is the pooled (PgBouncer) connection used
+// by the app at runtime; `directUrl` is the unpooled connection Prisma
+// Migrate needs to run schema changes — Neon requires both.
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 // ---------------------------------------------------------------------------
