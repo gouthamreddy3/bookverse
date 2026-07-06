@@ -1,7 +1,7 @@
 import type { NextAuthConfig } from "next-auth";
 
 const PUBLIC_EXACT_ROUTES = new Set(["/", "/login", "/signup"]);
-const PUBLIC_ROUTE_PREFIXES = ["/books"];
+const PUBLIC_ROUTE_PREFIXES = ["/books", "/explore", "/reviews", "/u"];
 
 function isPublicRoute(pathname: string): boolean {
   if (PUBLIC_EXACT_ROUTES.has(pathname)) return true;

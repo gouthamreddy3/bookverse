@@ -49,6 +49,50 @@ export async function searchBooks(query: string, page = 1): Promise<BookSearchOu
   return { query: trimmed, page, totalCount: response.numFound, results };
 }
 
+/** Books already cached in our own DB, newest first — used by /explore. */
+export async function getRecentlyAddedBooks(limit = 12): Promise<BookSearchResult[]> {
+  const books = await prisma.book.findMany({
+    orderBy: { createdAt: "desc" },
+    take: limit,
+    include: {
+      authors: { include: { author: true }, orderBy: { position: "asc" } },
+    },
+  });
+
+  return books.map((book) => ({
+    openLibraryId: book.openLibraryId ?? book.id,
+    slug: book.slug,
+    title: book.title,
+    authorNames: book.authors.map(({ author }) => author.name),
+    firstPublishYear: book.publishedAt?.getUTCFullYear() ?? null,
+    coverImageUrl: book.coverImageUrl,
+  }));
+}
+
+export interface GenreWithCount {
+  id: string;
+  name: string;
+  slug: string;
+  bookCount: number;
+}
+
+export async function getGenresWithBookCounts(limit = 20): Promise<GenreWithCount[]> {
+  const genres = await prisma.genre.findMany({
+    take: limit,
+    orderBy: { books: { _count: "desc" } },
+    select: { id: true, name: true, slug: true, _count: { select: { books: true } } },
+  });
+
+  return genres
+    .map((genre) => ({
+      id: genre.id,
+      name: genre.name,
+      slug: genre.slug,
+      bookCount: genre._count.books,
+    }))
+    .filter((genre) => genre.bookCount > 0);
+}
+
 function toBookDetail(book: {
   id: string;
   slug: string;

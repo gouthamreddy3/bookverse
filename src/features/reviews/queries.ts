@@ -47,6 +47,27 @@ export async function getReviewsForBook(
   };
 }
 
+/** Global review feed across all books — powers /reviews. */
+export async function getRecentReviews(currentUserId: string | null, limit = 20) {
+  const reviews = await prisma.review.findMany({
+    where: { deletedAt: null },
+    orderBy: { createdAt: "desc" },
+    take: limit,
+    include: {
+      user: { select: reviewAuthorSelect },
+      rating: { select: { value: true } },
+      book: { select: { title: true, slug: true, coverImageUrl: true } },
+    },
+  });
+
+  const liked = await likedReviewIds(
+    reviews.map((r) => r.id),
+    currentUserId
+  );
+
+  return reviews.map((review) => ({ ...review, isLikedByCurrentUser: liked.has(review.id) }));
+}
+
 export async function getUserRatingAndReview(bookId: string, userId: string) {
   const [rating, review] = await Promise.all([
     prisma.rating.findUnique({ where: { userId_bookId: { userId, bookId } } }),

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Fraunces } from "next/font/google";
 import { ThemeProvider } from "@/components/shared/theme-provider";
+import { SiteHeader } from "@/components/shared/site-header";
 import { siteConfig } from "@/config/site";
 import "./globals.css";
 
@@ -46,7 +47,8 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          {children}
+          <SiteHeader />
+          <div className="flex flex-1 flex-col pb-14 md:pb-0">{children}</div>
         </ThemeProvider>
       </body>
     </html>
