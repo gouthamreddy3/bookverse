@@ -8,6 +8,7 @@ import { QuickSearch } from "@/components/shared/quick-search";
 import { ThemeToggle } from "@/components/shared/theme-toggle";
 import { UserMenu } from "@/components/shared/user-menu";
 import { Button } from "@/components/ui/button";
+import { getUnreadNotificationCount } from "@/features/notifications/queries";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
@@ -15,12 +16,15 @@ export async function SiteHeader() {
   const session = await auth();
   const isAuthenticated = !!session?.user;
 
-  const profile = isAuthenticated
-    ? await prisma.profile.findUnique({
-        where: { userId: session.user.id },
-        select: { displayName: true, username: true, avatarUrl: true },
-      })
-    : null;
+  const [profile, unreadCount] = await Promise.all([
+    isAuthenticated
+      ? prisma.profile.findUnique({
+          where: { userId: session.user.id },
+          select: { displayName: true, username: true, avatarUrl: true },
+        })
+      : Promise.resolve(null),
+    isAuthenticated ? getUnreadNotificationCount(session.user.id) : Promise.resolve(0),
+  ]);
 
   const visibleNavItems = NAV_ITEMS.filter((item) => !item.requiresAuth || isAuthenticated);
 
@@ -55,9 +59,15 @@ export async function SiteHeader() {
                 size="icon"
                 aria-label="Notifications"
                 nativeButton={false}
+                className="relative"
                 render={<Link href="/notifications" />}
               >
                 <Bell className="size-4" />
+                {unreadCount > 0 && (
+                  <span className="absolute right-1 top-1 flex size-3.5 items-center justify-center rounded-full bg-destructive text-[0.6rem] font-medium text-white">
+                    {unreadCount > 9 ? "9+" : unreadCount}
+                  </span>
+                )}
               </Button>
               <UserMenu
                 displayName={profile?.displayName ?? session.user.name ?? "Reader"}

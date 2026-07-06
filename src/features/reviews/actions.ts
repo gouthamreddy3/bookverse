@@ -176,14 +176,29 @@ export async function toggleLike(
     }
 
     const likesCount = await tx.like.count({ where: { likeableType, likeableId } });
+    const liked = !existing;
 
     if (likeableType === "REVIEW") {
-      await tx.review.update({ where: { id: likeableId }, data: { likesCount } });
+      const review = await tx.review.update({
+        where: { id: likeableId },
+        data: { likesCount },
+        select: { userId: true },
+      });
+      if (liked && review.userId !== userId) {
+        await tx.notification.create({
+          data: {
+            userId: review.userId,
+            actorId: userId,
+            type: "REVIEW_LIKED",
+            reviewId: likeableId,
+          },
+        });
+      }
     } else {
       await tx.comment.update({ where: { id: likeableId }, data: { likesCount } });
     }
 
-    return { liked: !existing, likesCount };
+    return { liked, likesCount };
   });
 
   return { success: true, ...result };
@@ -219,7 +234,37 @@ export async function createComment(input: unknown) {
       include: { user: { select: commentAuthorSelect } },
     });
     const commentsCount = await tx.comment.count({ where: { reviewId, deletedAt: null } });
-    await tx.review.update({ where: { id: reviewId }, data: { commentsCount } });
+    const review = await tx.review.update({
+      where: { id: reviewId },
+      data: { commentsCount },
+      select: { userId: true },
+    });
+
+    if (parentId) {
+      const parent = await tx.comment.findUnique({ where: { id: parentId }, select: { userId: true } });
+      if (parent && parent.userId !== userId) {
+        await tx.notification.create({
+          data: {
+            userId: parent.userId,
+            actorId: userId,
+            type: "COMMENT_REPLIED",
+            reviewId,
+            commentId: created.id,
+          },
+        });
+      }
+    } else if (review.userId !== userId) {
+      await tx.notification.create({
+        data: {
+          userId: review.userId,
+          actorId: userId,
+          type: "REVIEW_COMMENTED",
+          reviewId,
+          commentId: created.id,
+        },
+      });
+    }
+
     return created;
   });
 
