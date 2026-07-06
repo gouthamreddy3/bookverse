@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 
 import { getBookBySlug } from "@/features/books/book-service";
 import { BookHeader } from "@/features/books/components/book-header";
+import { ReadingActions } from "@/features/reading-lists/components/reading-actions";
 import { ReviewsSection } from "@/features/reviews/components/reviews-section";
 
 export async function generateMetadata({
@@ -28,6 +29,7 @@ export default async function BookDetailPage({
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-12 px-6 py-12">
       <BookHeader book={book} />
+      <ReadingActions bookId={book.id} />
       <ReviewsSection
         bookId={book.id}
         averageRating={book.averageRating}

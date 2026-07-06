@@ -1,6 +1,8 @@
+import Link from "next/link";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
+import { CreateListForm } from "@/features/reading-lists/components/create-list-form";
 import { getUserReadingLists } from "@/features/reading-lists/queries";
 import { auth } from "@/lib/auth";
 
@@ -21,6 +23,8 @@ export default async function ReadingListsPage() {
         </p>
       </div>
 
+      <CreateListForm />
+
       {lists.length === 0 ? (
         <p className="text-sm text-muted-foreground">
           You haven&apos;t created any reading lists yet.
@@ -28,9 +32,10 @@ export default async function ReadingListsPage() {
       ) : (
         <div className="flex flex-col gap-3">
           {lists.map((list) => (
-            <div
+            <Link
               key={list.id}
-              className="flex items-center justify-between rounded-lg border border-border p-4"
+              href={`/lists/${list.id}`}
+              className="flex items-center justify-between rounded-lg border border-border p-4 transition-colors hover:bg-muted/40"
             >
               <div>
                 <p className="text-sm font-medium">{list.name}</p>
@@ -41,7 +46,7 @@ export default async function ReadingListsPage() {
               <span className="text-xs text-muted-foreground">
                 {list._count.items} book{list._count.items === 1 ? "" : "s"}
               </span>
-            </div>
+            </Link>
           ))}
         </div>
       )}
