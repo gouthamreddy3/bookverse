@@ -24,15 +24,28 @@ export async function setReadingStatus(input: unknown): Promise<ActionResult> {
   const { bookId, status } = parsed.data;
   const userId = session.user.id;
 
-  if (status === null) {
-    await prisma.readingStatus.deleteMany({ where: { userId, bookId } });
-  } else {
-    await prisma.readingStatus.upsert({
-      where: { userId_bookId: { userId, bookId } },
-      create: { userId, bookId, status },
-      update: { status },
-    });
-  }
+  await prisma.$transaction(async (tx) => {
+    if (status === null) {
+      await tx.readingStatus.deleteMany({ where: { userId, bookId } });
+    } else {
+      await tx.readingStatus.upsert({
+        where: { userId_bookId: { userId, bookId } },
+        create: {
+          userId,
+          bookId,
+          status,
+          finishedAt: status === "READ" ? new Date() : null,
+        },
+        update: {
+          status,
+          finishedAt: status === "READ" ? new Date() : null,
+        },
+      });
+    }
+
+    const booksReadCount = await tx.readingStatus.count({ where: { userId, status: "READ" } });
+    await tx.profile.update({ where: { userId }, data: { booksReadCount } });
+  });
 
   return { success: true };
 }

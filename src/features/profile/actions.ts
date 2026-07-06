@@ -43,3 +43,20 @@ export async function updateProfile(input: unknown): Promise<ActionResult> {
   revalidatePath("/settings");
   return { success: true };
 }
+
+export async function setReadingGoal(goal: number | null): Promise<ActionResult> {
+  const session = await auth();
+  if (!session?.user) return { success: false, error: "Not authenticated." };
+
+  if (goal !== null && (!Number.isInteger(goal) || goal < 1 || goal > 1000)) {
+    return { success: false, error: "Enter a goal between 1 and 1000 books." };
+  }
+
+  await prisma.profile.update({
+    where: { userId: session.user.id },
+    data: { readingGoal: goal },
+  });
+
+  revalidatePath("/dashboard");
+  return { success: true };
+}
